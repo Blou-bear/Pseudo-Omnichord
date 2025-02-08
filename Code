@@ -1,0 +1,142 @@
+//PSEUDO OMNICHORD RP2040
+
+//this code is untested, will update soonest, have fun.
+
+#include <Wire.h>
+#include <Adafruit_MCP4725.h>  // Include library for MCP4725 DAC
+
+// Define the pins for the keybed (12 chromatic notes)
+const int keybedPins[12] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};  // Example pin numbers for C, C#, D, etc.
+
+const int majorButtonPin = 14;  // Pin for the Major button
+const int minorButtonPin = 15;  // Pin for the Minor button
+const int seventhButtonPin = 16;  // Pin for the 7th button
+
+const int tssPin = A0;  // Pin for the TSS (Touch Sensitive Strip)
+
+int currentChord = 0;  // 0 = Major, 1 = Minor, 2 = 7th
+int selectedNote = -1;  // -1 = No note selected
+int lastTouchValue = 0;  // Store the last touch value to detect changes
+int tssRange = 12;  // Number of notes in the range (chromatic scale)
+
+Adafruit_MCP4725 dac;  // Create an MCP4725 object for DAC control
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set all the keybed pins as input
+  for (int i = 0; i < 12; i++) {
+    pinMode(keybedPins[i], INPUT_PULLUP);  // Assuming buttons pull to LOW when pressed
+  }
+
+  // Set the chord modifier buttons as input
+  pinMode(majorButtonPin, INPUT_PULLUP);
+  pinMode(minorButtonPin, INPUT_PULLUP);
+  pinMode(seventhButtonPin, INPUT_PULLUP);
+
+  // Set the TSS pin as input
+  pinMode(tssPin, INPUT);
+
+  // Initialize the DAC
+  dac.begin(0x60);  // I2C address for MCP4725
+}
+
+void loop() {
+  // Read all keybed buttons (chromatic notes)
+  for (int i = 0; i < 12; i++) {
+    if (digitalRead(keybedPins[i]) == LOW) {  // Button pressed
+      selectedNote = i;
+      Serial.print("Note selected: ");
+      Serial.println(i);
+      break;  // Only take the first pressed key (monophonic)
+    }
+  }
+
+  // Read chord modifier buttons (Major, Minor, 7th)
+  if (digitalRead(majorButtonPin) == LOW) {
+    currentChord = 0;  // Major chord
+    Serial.println("Major chord selected");
+  } else if (digitalRead(minorButtonPin) == LOW) {
+    currentChord = 1;  // Minor chord
+    Serial.println("Minor chord selected");
+  } else if (digitalRead(seventhButtonPin) == LOW) {
+    currentChord = 2;  // 7th chord
+    Serial.println("7th chord selected");
+  }
+
+  // Read the TSS (Touch Sensitive Strip)
+  int tssValue = analogRead(tssPin);  // Read the analog value of the TSS
+  int normalizedTss = map(tssValue, 0, 1023, 0, tssRange);  // Normalize to note range
+
+  if (normalizedTss != lastTouchValue) {
+    lastTouchValue = normalizedTss;
+    Serial.print("TSS Value: ");
+    Serial.println(normalizedTss);
+    // Use the TSS value to modify the note's pitch or behavior
+    selectedNote = (selectedNote + normalizedTss) % 12;  // Adjust the note based on TSS value
+    Serial.print("Adjusted Note: ");
+    Serial.println(selectedNote);
+  }
+
+  // Trigger the chord based on selected note and chord type
+  if (selectedNote != -1) {
+    triggerChord(selectedNote, currentChord);
+  }
+}
+
+void triggerChord(int note, int chordType) {
+  // Here you can trigger the corresponding chord based on note and chord type
+  // For simplicity, we'll print the selected chord and note
+  String chordName = getChordName(note, chordType);
+  Serial.print("Triggering chord: ");
+  Serial.println(chordName);
+
+  // Generate waveform for the chord (simplified)
+  generateWaveform(note, chordType);  // Call the waveform generation function
+}
+
+String getChordName(int note, int chordType) {
+  // Map the note to its name (C, C#, D, etc.)
+  String noteName;
+  switch (note) {
+    case 0: noteName = "C"; break;
+    case 1: noteName = "C#"; break;
+    case 2: noteName = "D"; break;
+    case 3: noteName = "D#"; break;
+    case 4: noteName = "E"; break;
+    case 5: noteName = "F"; break;
+    case 6: noteName = "F#"; break;
+    case 7: noteName = "G"; break;
+    case 8: noteName = "G#"; break;
+    case 9: noteName = "A"; break;
+    case 10: noteName = "A#"; break;
+    case 11: noteName = "B"; break;
+    default: noteName = "Unknown"; break;
+  }
+
+  // Add chord type to the note
+  switch (chordType) {
+    case 0: return noteName + " Major";
+    case 1: return noteName + " Minor";
+    case 2: return noteName + " 7th";
+    default: return noteName;
+  }
+}
+
+void generateWaveform(int note, int chordType) {
+  // Simplified waveform generation
+  // You can modify this to use a specific waveform generation function (e.g., sawtooth)
+  
+  // Example: Generate a simple sawtooth waveform
+  int frequency = getFrequency(note);  // Map note to frequency (basic)
+  int waveformValue = map(frequency, 20, 2000, 0, 4095);  // Map frequency to DAC range (12-bit)
+  
+  // Output the waveform value to the DAC
+  dac.setVoltage(waveformValue, false);
+}
+
+int getFrequency(int note) {
+  // Map note to a basic frequency (for simplicity)
+  float frequencies[12] = {261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00, 415.30, 440.00, 466.16, 493.88};  // Frequencies for C4 to B4
+  return (int)frequencies[note];
+}
